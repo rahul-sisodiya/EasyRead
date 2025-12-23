@@ -9,7 +9,7 @@ export default function SignInPage() {
   const [error, setError] = useState("");
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-  const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
+  const API = import.meta.env.VITE_API_URL || (isLocal ? "https://easyread-nxdy.onrender.com/api" : "/api");
   const onSubmit = e => {
     e.preventDefault();
     setError("");
