@@ -10,11 +10,9 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-<<<<<<< HEAD
+
   const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
-=======
-  const API = import.meta.env.VITE_API_URL || (isLocal ? "https://easyread-nxdy.onrender.com/api" : "/api");
->>>>>>> 7a9adbe9164a90cddbdce1f94599e5073713c719
+
   const onSubmit = e => {
     e.preventDefault();
     setError("");
