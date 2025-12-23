@@ -7,7 +7,11 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
   const [page, setPage] = useState(initialPage != null ? Number(initialPage) : 0);
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+<<<<<<< HEAD
   const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
+=======
+  const API = import.meta.env.VITE_API_URL || (isLocal ? "https://easyread-nxdy.onrender.com/api" : "/api");
+>>>>>>> 7a9adbe9164a90cddbdce1f94599e5073713c719
   const [fontSize, setFontSize] = useState(18);
   const [theme, setTheme] = useState("dark");
   const [lineHeight, setLineHeight] = useState(1.6);
