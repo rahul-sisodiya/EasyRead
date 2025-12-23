@@ -4,7 +4,7 @@ import axios from "axios";
 
 const host = typeof window !== "undefined" ? window.location.hostname : "";
 const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
+const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
 
 export default function VocabPage() {
   const navigate = useNavigate();
