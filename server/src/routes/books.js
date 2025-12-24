@@ -8,7 +8,7 @@ router.get("/", async (req, res) => {
   try {
     const userId = req.query.userId;
     if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
-    const itemsRaw = await Book.find({ userId }, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).sort({ createdAt: -1 }).lean();
+    const itemsRaw = await Book.find({ userId }, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).sort({ createdAt: -1 }).lean();
     const items = itemsRaw.map(it => ({ ...it, coverUrl: ((it.hasCover || it.coverUrl) ? (it.coverUrl || `/api/books/${it._id}/cover`) : "") }));
     res.json({ items });
   } catch (e) {
@@ -20,15 +20,15 @@ router.get("/:id", async (req, res) => {
   try {
     const userId = req.query.userId;
     if (!userId || userId === "guest") {
-      const b0 = await Book.findById(req.params.id, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
+      const b0 = await Book.findById(req.params.id, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
       if (!b0) { res.status(404).json({ error: "not_found" }); return; }
       const item0 = { ...b0, coverUrl: ((b0.hasCover || b0.coverUrl) ? (b0.coverUrl || `/api/books/${b0._id}/cover`) : "") };
       res.json({ item: item0 });
       return;
     }
-    const b = await Book.findOne({ _id: req.params.id, userId }, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
+    const b = await Book.findOne({ _id: req.params.id, userId }, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
     if (!b) {
-      const bAny = await Book.findById(req.params.id, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
+      const bAny = await Book.findById(req.params.id, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).lean();
       if (!bAny) { res.status(404).json({ error: "not_found" }); return; }
       const item = { ...bAny, coverUrl: ((bAny.hasCover || bAny.coverUrl) ? (bAny.coverUrl || `/api/books/${bAny._id}/cover`) : "") };
       res.json({ item });
@@ -157,7 +157,7 @@ router.patch("/:id", async (req, res) => {
   try {
     const userId = req.body?.userId || req.query?.userId;
     if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
-    const { title, category, lastPage, totalPages, coverUrl, pinned, coverDataUrl } = req.body || {};
+    const { title, category, lastPage, totalPages, coverUrl, pinned, coverDataUrl, lastScroll, lastMode } = req.body || {};
     const update = {};
     if (typeof title === "string") update.title = title;
     if (typeof category === "string") update.category = category;
@@ -179,6 +179,14 @@ router.patch("/:id", async (req, res) => {
       }
     }
     if (Number.isFinite(Number(totalPages))) update.totalPages = Math.max(0, Number(totalPages));
+    if (Number.isFinite(Number(lastScroll))) {
+      const v = Math.max(0, Math.min(100, Number(lastScroll)));
+      update.lastScroll = v;
+    }
+    if (typeof lastMode === "string") {
+      const m = String(lastMode).toLowerCase();
+      if (m === "page" || m === "scroll") update.lastMode = m;
+    }
     await Book.updateOne({ _id: req.params.id, userId }, { $set: update });
     res.json({ ok: true, coverPersisted: !!update.hasCover });
   } catch (e) {

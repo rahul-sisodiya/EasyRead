@@ -9,7 +9,7 @@ router.get("/", async (req, res) => {
     if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
     const s = await Settings.findOne({ userId }).lean();
     if (!s) {
-      res.json({ item: { userId, font: 18, theme: "dark", lineHeight: 1.6, fontFamily: "serif", palette: "black", eyeComfort: false, warmth: 0.35, brightness: 0.9, panelImageDataUrl: "" } });
+      res.json({ item: { userId, font: 18, theme: "dark", lineHeight: 1.6, fontFamily: "serif", mode: "page", palette: "black", eyeComfort: false, warmth: 0.35, brightness: 0.9 } });
       return;
     }
     res.json({ item: s });
@@ -23,7 +23,7 @@ router.patch("/", async (req, res) => {
     const { userId } = req.body || {};
     if (!userId) { res.status(400).json({ error: "no_user" }); return; }
     const update = {};
-    const pick = ["font","theme","lineHeight","fontFamily","palette","eyeComfort","warmth","brightness","panelImageDataUrl"];
+    const pick = ["font","theme","lineHeight","fontFamily","mode","palette","eyeComfort","warmth","brightness"];
     pick.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
     update.updatedAt = new Date();
     await Settings.updateOne({ userId }, { $set: update }, { upsert: true });

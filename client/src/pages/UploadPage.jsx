@@ -6,9 +6,7 @@ try { pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker
 
 const host = typeof window !== "undefined" ? window.location.hostname : "";
 const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-
-const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
-
+const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);
@@ -200,6 +198,27 @@ export default function UploadPage() {
     return bt - at;
   });
   const shownSorted = sortBooks(shown);
+  const BookLoader = () => {
+    const bg = "#000000";
+    const pageColor = "#f4f0e6";
+    const accent = "#ffffff";
+    return (
+      <div style={{ position: "fixed", inset: 0, background: bg, display: "grid", placeItems: "center", zIndex: 1000 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ position: "relative", width: 160, height: 120, margin: "0 auto", perspective: 800 }}>
+            <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: pageColor, border: "1px solid #222", transformOrigin: "left center", borderTopLeftRadius: 6, borderBottomLeftRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookLeft 1200ms ease-in-out infinite alternate" }} />
+            <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: pageColor, border: "1px solid #222", transformOrigin: "right center", borderTopRightRadius: 6, borderBottomRightRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookRight 1200ms ease-in-out infinite alternate" }} />
+            <div style={{ position: "absolute", top: 8, left: "calc(50% - 1px)", width: 2, height: 104, background: "#ddd" }} />
+          </div>
+          <div style={{ marginTop: 16, color: accent, fontWeight: 600 }}>Uploading…</div>
+          <style>{`
+            @keyframes bookLeft { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(-40deg) translateZ(0); } }
+            @keyframes bookRight { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(40deg) translateZ(0); } }
+          `}</style>
+        </div>
+      </div>
+    );
+  };
 
   const updateLocalBooks = (next) => {
     setBooks(next);
@@ -242,6 +261,7 @@ export default function UploadPage() {
   };
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
+      {loading && <BookLoader />}
       <div className="mb-6 relative rounded-xl overflow-hidden border border-neutral-800 shadow-[0_12px_40px_rgba(0,0,0,0.35)]" style={{ minHeight: panelImageDataUrl ? 160 : 220 }}>
         {panelImageDataUrl && (
           <img src={panelImageDataUrl} alt="Dashboard" className="absolute inset-0 w-full h-full" style={{ objectFit: "cover", objectPosition: "center", filter: "saturate(1.1) contrast(1.05)", transform: "translateZ(0)" }} />

@@ -12,6 +12,8 @@ const BookSchema = new mongoose.Schema({
   category: { type: String, default: "Uncategorized" },
   lastPage: { type: Number, default: 0 },
   totalPages: { type: Number, default: 0 },
+  lastMode: { type: String, default: "page" },
+  lastScroll: { type: Number, default: 0 },
   pinned: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });

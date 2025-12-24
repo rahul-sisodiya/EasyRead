@@ -6,6 +6,7 @@ const SettingsSchema = new mongoose.Schema({
   theme: { type: String, default: "dark" },
   lineHeight: { type: Number, default: 1.6 },
   fontFamily: { type: String, default: "serif" },
+  mode: { type: String, default: "page" },
   palette: { type: String, default: "black" },
   eyeComfort: { type: Boolean, default: false },
   warmth: { type: Number, default: 0.35 },

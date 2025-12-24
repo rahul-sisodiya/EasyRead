@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 const host = typeof window !== "undefined" ? window.location.hostname : "";
 const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
+const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
 import Reader from "../components/Reader.jsx";
 import * as pdfjs from "pdfjs-dist/build/pdf";
 try { pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.js", import.meta.url).toString(); } catch {}
@@ -13,6 +13,7 @@ export default function ReaderPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
+  const [loading, setLoading] = useState(true);
   const [html, setHtml] = useState(() => {
     try { return String(location.state?.html || ""); } catch { return ""; }
   });
@@ -20,7 +21,12 @@ export default function ReaderPage() {
     try { return String(location.state?.text || ""); } catch { return ""; }
   });
   const [initialPage, setInitialPage] = useState(0);
+  const [initialScroll, setInitialScroll] = useState(0);
+  const [initialMode, setInitialMode] = useState("page");
   const [hasBooks, setHasBooks] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+  }, []);
   useEffect(() => {
     const userId = (() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); return (u && u.userId) ? u.userId : "guest"; } catch { return "guest"; } })();
     if (!id) {
@@ -35,7 +41,7 @@ export default function ReaderPage() {
     if (id && !String(id).startsWith("local_") && !html) {
       (async () => {
         try {
-          setHtml("<p>Loading…</p>");
+          setLoading(true);
           const r = await axios.get(`${API}/books/${id}/content`, { params: { userId } });
           const hh = r.data?.html || "";
           const tt = r.data?.text || "";
@@ -77,6 +83,12 @@ export default function ReaderPage() {
           if (Number.isFinite(lp)) {
             setInitialPage(lp);
           }
+          const ls = Number(br.data?.item?.lastScroll ?? 0);
+          if (Number.isFinite(ls)) {
+            setInitialScroll(Math.max(0, Math.min(100, ls)));
+          }
+          const lm = String(br.data?.item?.lastMode || "").toLowerCase();
+          if (lm === "page" || lm === "scroll") setInitialMode(lm);
         } catch {}
       })();
     }
@@ -97,12 +109,34 @@ export default function ReaderPage() {
       </div>
     );
   }
+  const BookLoader = () => {
+    const bg = "#000000";
+    const pageColor = "#f4f0e6";
+    const accent = "#ffffff";
+    return (
+      <div style={{ position: "fixed", inset: 0, background: bg, display: "grid", placeItems: "center", zIndex: 1000 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ position: "relative", width: 160, height: 120, margin: "0 auto", perspective: 800 }}>
+            <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: pageColor, border: "1px solid #222", transformOrigin: "left center", borderTopLeftRadius: 6, borderBottomLeftRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookLeft 1200ms ease-in-out infinite alternate" }} />
+            <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: pageColor, border: "1px solid #222", transformOrigin: "right center", borderTopRightRadius: 6, borderBottomRightRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookRight 1200ms ease-in-out infinite alternate" }} />
+            <div style={{ position: "absolute", top: 8, left: "calc(50% - 1px)", width: 2, height: 104, background: "#ddd" }} />
+          </div>
+          <div style={{ marginTop: 16, color: accent, fontWeight: 600 }}>Opening book…</div>
+          <style>{`
+            @keyframes bookLeft { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(-40deg) translateZ(0); } }
+            @keyframes bookRight { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(40deg) translateZ(0); } }
+          `}</style>
+        </div>
+      </div>
+    );
+  };
   return (
     <div className="max-w-none">
-      <Reader html={html} initialPage={initialPage} bookId={id || null} onPageChange={onPageChange} onBack={() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); if (u) navigate("/upload"); else navigate("/"); } catch { navigate("/"); } }} />
+      {loading && <BookLoader />}
+      <Reader html={html} initialPage={initialPage} bookId={id || null} onPageChange={onPageChange} onBack={() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); if (u) navigate("/upload"); else navigate("/"); } catch { navigate("/"); } }} initialScroll={initialScroll} initialMode={initialMode} onFirstLayoutDone={() => setTimeout(() => setLoading(false), 150)} />
     </div>
   );
-} 
+}
   function toHtml(t) {
     const s = String(t || "").trim();
     if (!s) return "";

@@ -2,18 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import WordPopup from "./WordPopup.jsx";
 
-export default function Reader({ html, initialPage = null, bookId = null, onPageChange, onBack }) {
+export default function Reader({ html, initialPage = null, bookId = null, onPageChange, onBack, initialScroll = 0, initialMode = "page", onFirstLayoutDone }) {
   const [pages, setPages] = useState([]);
   const [page, setPage] = useState(initialPage != null ? Number(initialPage) : 0);
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-
-  const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
-
+  const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
   const [fontSize, setFontSize] = useState(18);
   const [theme, setTheme] = useState("dark");
   const [lineHeight, setLineHeight] = useState(1.6);
-  const [mode, setMode] = useState("page");
+  const [mode, setMode] = useState(initialMode || "page");
   const [fontFamily, setFontFamily] = useState("serif");
   const [palette, setPalette] = useState("black");
   const [eyeComfort, setEyeComfort] = useState(false);
@@ -24,12 +22,24 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
   const measureRef = useRef(null);
   const toolbarRef = useRef(null);
   const containerRef = useRef(null);
+  const scrollRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [dims, setDims] = useState({ width: 700, height: 700 });
   const [toolbarH, setToolbarH] = useState(56);
   const vPad = Math.max(12, Math.round(fontSize * 0.5));
   const [selection, setSelection] = useState(null);
   const [anim, setAnim] = useState({ active: false, dir: "next", next: 0, stage: 0 });
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollSaveTimerRef = useRef(0);
+  const lastScrollValRef = useRef(0);
+  const splitCacheRef = useRef(new Map());
+  const [reflowing, setReflowing] = useState(false);
+  const [precomputing, setPrecomputing] = useState(false);
+  const getCacheKey = () => {
+    const bw = Math.round(dims.width / 16) * 16;
+    const bh = Math.round(dims.height / 16) * 16;
+    return `${String(bookId || "local")}|${fontSize}|${lineHeight}|${fontFamily}|${bw}|${bh}|${isFullscreen ? 1 : 0}|${uniformPages ? 1 : 0}`;
+  };
   const persistSettings = (patch) => {
     try {
       const u = JSON.parse(localStorage.getItem("easyread_user") || "null");
@@ -59,7 +69,10 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
     } catch {}
   }, []);
   const lastPageRef = useRef(0);
-  const ANIM_MS = 750;
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const isAndroid = /Android/i.test(ua);
+  const simpleAnim = false;
+  const ANIM_MS = 320;
   const [highlights, setHighlights] = useState([]);
 
   
@@ -79,6 +92,29 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       } catch {}
     })();
   }, []);
+  const persistMode = (m) => {
+    try {
+      const idStr = String(bookId || "");
+      if (idStr && !idStr.startsWith("local_")) {
+        const userId = (() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); return (u && u.userId) ? u.userId : "guest"; } catch { return "guest"; } })();
+        axios.patch(`${API}/books/${idStr}`, { userId, lastMode: m }).catch(()=>{});
+      }
+    } catch {}
+  };
+  const saveScroll = (val) => {
+    lastScrollValRef.current = val;
+    if (scrollSaveTimerRef.current) window.clearTimeout(scrollSaveTimerRef.current);
+    scrollSaveTimerRef.current = window.setTimeout(() => {
+      try {
+        const idStr = String(bookId || "");
+        if (idStr && !idStr.startsWith("local_")) {
+          const userId = (() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); return (u && u.userId) ? u.userId : "guest"; } catch { return "guest"; } })();
+          const pct = Math.max(0, Math.min(100, Math.round(lastScrollValRef.current * 100)));
+          axios.patch(`${API}/books/${idStr}`, { userId, lastScroll: pct }).catch(()=>{});
+        }
+      } catch {}
+    }, 800);
+  };
 
   useEffect(() => {
     let raf = 0;
@@ -135,7 +171,7 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       if (!el) return;
       e.preventDefault();
       const now = Date.now();
-      if (now - last < 200) return;
+      if (now - last < 100) return;
       if (e.deltaY > 0) {
         goToPage(Math.min((pages.length || 1) - 1, page + 1));
       } else if (e.deltaY < 0) {
@@ -218,7 +254,40 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       setPages([html]);
       return;
     }
-    let timeout = 0;
+    const htmlHash = plain.length;
+    const key = getCacheKey();
+    const cached = splitCacheRef.current.get(key);
+    if (cached && cached.htmlHash === htmlHash) {
+      const pagesOut = cached.pages;
+      setPages(pagesOut);
+      let target = page;
+      if (anchorPlain) {
+        try {
+          const pagesPlain = pagesOut.map(p => String(p || "").replace(/<[^>]+>/g, ""));
+          let found = -1;
+          for (let i = 0; i < pagesPlain.length; i++) {
+            if (pagesPlain[i].includes(anchorPlain)) { found = i; break; }
+          }
+          if (found >= 0) target = found;
+          else {
+            const progress = pages.length ? (page / Math.max(1, pages.length - 1)) : 0;
+            target = Math.max(0, Math.min(Math.max(0, pagesOut.length - 1), Math.round(progress * Math.max(0, pagesOut.length - 1))));
+          }
+        } catch {}
+      }
+      setPage(target);
+      lastPageRef.current = target;
+      try {
+        const idStr = String(bookId || "");
+        if (idStr && !idStr.startsWith("local_")) {
+          const userId = (() => { try { const u = JSON.parse(localStorage.getItem("easyread_user") || "null"); return (u && u.userId) ? u.userId : "guest"; } catch { return "guest"; } })();
+          axios.patch(`${API}/books/${idStr}`, { userId, totalPages: pagesOut.length }).catch(()=>{});
+        }
+      } catch {}
+      try { onFirstLayoutDone && onFirstLayoutDone(); } catch {}
+      return;
+    }
+    setReflowing(true);
     const run = () => {
     const measureDiv = document.createElement("div");
     measureDiv.style.visibility = "hidden";
@@ -231,7 +300,7 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
     measureDiv.style.fontSize = `${fontSize}px`;
     measureDiv.style.fontFamily = famMap[fontFamily];
     document.body.appendChild(measureDiv);
-    const paddingY = isFullscreen ? 0 : vPad * 2;
+    const paddingY = isFullscreen ? 0 : (Math.max(16, vPad) + 4) * 2;
     const pageHeight = Math.max(200, dims.height - paddingY);
     const src = document.createElement("div");
     src.innerHTML = html;
@@ -305,6 +374,7 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
     }
     if (!pagesOut.length && html) pagesOut = [html];
     setPages(pagesOut);
+    splitCacheRef.current.set(key, { pages: pagesOut, htmlHash });
     let target = page;
     if (anchorPlain) {
       try {
@@ -330,10 +400,131 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       }
     } catch {}
     document.body.removeChild(measureDiv);
+    setReflowing(false);
+    try { onFirstLayoutDone && onFirstLayoutDone(); } catch {}
     };
-    timeout = window.setTimeout(run, 80);
-    return () => window.clearTimeout(timeout);
-  }, [html, fontSize, lineHeight, dims.width, dims.height, fontFamily, mode, isFullscreen, vPad, page, pages.length]);
+    let rafId = window.requestAnimationFrame(run);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [html, fontSize, lineHeight, dims.width, dims.height, fontFamily, mode, isFullscreen, vPad]);
+
+  useEffect(() => {
+    if (!html || mode !== "page" || reflowing) return;
+    const schedule = (fn) => {
+      const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 50));
+      ric(fn);
+    };
+    let canceled = false;
+    const sizes = [Math.max(14, fontSize - 2), fontSize, Math.min(28, fontSize + 2)];
+    const lines = [Math.max(1.2, lineHeight - 0.1), lineHeight, Math.min(2.0, lineHeight + 0.1)];
+    let si = 0, li = 0;
+    setPrecomputing(true);
+    const step = () => {
+      if (canceled) return;
+      const fs = sizes[si];
+      const lh = lines[li];
+          const bw = Math.round(dims.width / 16) * 16;
+          const bh = Math.round(dims.height / 16) * 16;
+          const key = `${String(bookId || "local")}|${fs}|${lh}|${fontFamily}|${bw}|${bh}|${isFullscreen ? 1 : 0}|${uniformPages ? 1 : 0}`;
+          if (splitCacheRef.current.has(key)) {
+            li++;
+            if (li >= lines.length) { li = 0; si++; }
+            if (si < sizes.length) schedule(step); else setPrecomputing(false);
+            return;
+          }
+          const measureDiv = document.createElement("div");
+          measureDiv.style.visibility = "hidden";
+          measureDiv.style.position = "fixed";
+          measureDiv.style.left = "-9999px";
+          measureDiv.style.top = "-9999px";
+          measureDiv.style.width = `${dims.width}px`;
+          const lhUsed = isFullscreen ? Math.max(1.2, lh * 0.88) : lh;
+          measureDiv.style.lineHeight = String(lhUsed);
+          measureDiv.style.fontSize = `${fs}px`;
+          measureDiv.style.fontFamily = famMap[fontFamily];
+          document.body.appendChild(measureDiv);
+          const paddingY = isFullscreen ? 0 : (Math.max(16, Math.round(fs * 0.5)) + 4) * 2;
+          const pageHeight = Math.max(200, dims.height - paddingY);
+          const src = document.createElement("div");
+          src.innerHTML = html;
+          const nodes = Array.from(src.childNodes);
+          const measure = (content) => {
+            measureDiv.innerHTML = content;
+            return Math.ceil(measureDiv.getBoundingClientRect().height);
+          };
+          const totalHeight = measure(html);
+          let pagesOut = [];
+          let used = 0;
+          let cur = [];
+          nodes.forEach(n => {
+            const outer = n.outerHTML || (n.textContent ? `<p>${n.textContent}</p>` : "");
+            if (!outer) return;
+            const h = measure(outer);
+            if (h <= pageHeight) {
+              if (used + h <= pageHeight) {
+                cur.push(outer);
+                used += h;
+              } else {
+                pagesOut.push(cur.join(""));
+                cur = [outer];
+                used = h;
+              }
+              return;
+            }
+            const text = String(n.textContent || "");
+            const words = text.split(/\s+/).filter(Boolean);
+            let start = 0;
+            while (start < words.length) {
+              let low = 1, high = words.length - start, fit = 0, fitH = 0;
+              while (low <= high) {
+                const mid = (low + high) >> 1;
+                const chunkHtml = `<p>${words.slice(start, start + mid).join(" ")}</p>`;
+                const ch = measure(chunkHtml);
+                if (used + ch <= pageHeight) {
+                  fit = mid; fitH = ch; low = mid + 1;
+                } else {
+                  high = mid - 1;
+                }
+              }
+              if (fit === 0) {
+                pagesOut.push(cur.join(""));
+                cur = [];
+                used = 0;
+                continue;
+              }
+              const chunkHtml = `<p>${words.slice(start, start + fit).join(" ")}</p>`;
+              cur.push(chunkHtml);
+              used += fitH;
+              start += fit;
+              if (start < words.length) {
+                pagesOut.push(cur.join(""));
+                cur = [];
+                used = 0;
+              }
+            }
+          });
+          if (cur.length) pagesOut.push(cur.join(""));
+          if (uniformPages && !isFullscreen) {
+            const estCount = Math.max(1, Math.ceil(totalHeight / pageHeight));
+            const plain2 = src.textContent || "";
+            const words2 = plain2.split(/\s+/).filter(Boolean);
+            const per2 = Math.max(1, Math.ceil(words2.length / estCount));
+            let uniform2 = [];
+            for (let i = 0; i < words2.length; i += per2) {
+              uniform2.push(`<p>${words2.slice(i, i + per2).join(" ")}</p>`);
+            }
+            pagesOut = uniform2.length ? uniform2 : pagesOut;
+          }
+          if (!pagesOut.length && html) pagesOut = [html];
+          const htmlHash2 = String(html || "").replace(/<[^>]+>/g, "").trim().length;
+          splitCacheRef.current.set(key, { pages: pagesOut, htmlHash: htmlHash2 });
+          document.body.removeChild(measureDiv);
+      li++;
+      if (li >= lines.length) { li = 0; si++; }
+      if (si < sizes.length) schedule(step); else setPrecomputing(false);
+    };
+    schedule(step);
+    return () => { canceled = true; setPrecomputing(false); };
+  }, [html, fontSize, lineHeight, dims.width, dims.height, fontFamily, mode, isFullscreen, uniformPages, reflowing]);
 
   // animation is now driven directly from goToPage for reliability
 
@@ -388,13 +579,15 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       const dir = clamped > page ? "next" : "prev";
       lastPageRef.current = page;
       setAnim({ active: true, dir, next: clamped, stage: 0 });
-      requestAnimationFrame(() => setAnim(a => ({ ...a, stage: 1 })));
-      setTimeout(() => {
-        setPage(clamped);
-        try { onPageChange && onPageChange(clamped); } catch {}
-        lastPageRef.current = clamped;
-        setAnim({ active: false, dir: "next", next: 0, stage: 0 });
-      }, ANIM_MS);
+      requestAnimationFrame(() => {
+        setAnim(prev => ({ ...prev, stage: 1 }));
+        setTimeout(() => {
+          setPage(clamped);
+          try { onPageChange && onPageChange(clamped); } catch {}
+          lastPageRef.current = clamped;
+          setAnim({ active: false, dir: "next", next: 0, stage: 0 });
+        }, ANIM_MS);
+      });
     } else {
       setMode("page");
       setPage(clamped);
@@ -451,9 +644,22 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
       const p = Number(initialPage);
       setPage(p);
       lastPageRef.current = p;
-      
     }
   }, [initialPage]);
+  useEffect(() => {
+    const applyInitialScroll = () => {
+      if (mode !== "scroll") return;
+      const el = scrollRef.current;
+      if (!el) return;
+      const pct = Math.max(0, Math.min(100, Number(initialScroll || 0)));
+      const maxY = Math.max(1, el.scrollHeight - el.clientHeight);
+      const y = Math.round((pct / 100) * maxY);
+      el.scrollTop = y;
+      setScrollProgress(Math.max(0, Math.min(1, pct / 100)));
+    };
+    const id = window.requestAnimationFrame(applyInitialScroll);
+    return () => window.cancelAnimationFrame(id);
+  }, [initialScroll, mode, dims.height, html]);
 
   return (
     <div
@@ -488,16 +694,42 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
               
             </>
           )}
+          {mode === "scroll" && (
+            <button className={theme === "dark" ? "px-3 py-1 rounded border border-neutral-700 bg-neutral-800 text-neutral-200" : "px-3 py-1 rounded border bg-white"} onClick={() => { try { onBack && onBack(); } catch {} }}>Back</button>
+          )}
           <div className="flex items-center gap-3 ml-auto">
+            {precomputing && (
+              <div className="flex items-center gap-2">
+                <div style={{ width: 80, height: 8, background: theme === "dark" ? "#444444" : "#dddddd", position: "relative", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ position: "absolute", inset: 0, background: theme === "dark" ? "linear-gradient(90deg, transparent, #ffffff, transparent)" : "linear-gradient(90deg, transparent, #111111, transparent)", transform: "translateX(-100%)", animation: "loaderMove 1200ms linear infinite" }} />
+                </div>
+                <span className={theme === "dark" ? "text-xs text-neutral-300" : "text-xs"}>Optimizing…</span>
+                <style>{`@keyframes loaderMove { 0% { transform: translateX(-100%); } 50% { transform: translateX(0%); } 100% { transform: translateX(100%); } }`}</style>
+              </div>
+            )}
             <button className={theme === "dark" ? "px-3 py-1 rounded border border-neutral-700 bg-neutral-800 text-neutral-200" : "px-3 py-1 rounded border bg-white"} onClick={toggleFullscreen}>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</button>
             <button className={theme === "dark" ? "px-3 py-1 rounded border border-neutral-700 bg-neutral-800 text-neutral-200" : "px-3 py-1 rounded border bg-white"} onClick={() => setSettingsOpen(true)}>Settings</button>
           </div>
         </div>
       </div>
+      {mode === "scroll" && (
+        <div className="w-full flex items-center gap-3 px-4 py-2">
+          <span className={theme === "dark" ? "text-xs text-neutral-400" : "text-xs"}>{`${Math.min(100, Math.max(0, Math.round(scrollProgress * 100)))}%`}</span>
+          <div className="flex-1 h-2 bg-neutral-800 rounded-md overflow-hidden">
+            <div style={{ width: `${Math.min(100, Math.max(0, Math.round(scrollProgress * 100)))}%`, height: 8, background: theme === "dark" ? "#ffffff" : "#111111", transition: "width 200ms ease" }} />
+          </div>
+        </div>
+      )}
       {mode === "page" ? (
         <div onMouseUp={onSelect} className="w-full px-0 py-0" style={{ fontSize, lineHeight: effectiveLineHeight, width: "100%", height: dims.height, overflow: "hidden", touchAction: "pan-y", overscrollBehavior: "contain", backgroundColor: isFullscreen ? pageBg : undefined, marginTop: isFullscreen ? toolbarH : 0 }}>
+          {!anim.active && (
+            <>
+              <div onClick={() => { goToPage(Math.max(0, page - 1)); }} style={{ position: "absolute", inset: "0 auto 0 0", width: "30%", height: "100%", zIndex: 5, background: "transparent" }} />
+              <div onClick={() => { goToPage(Math.min((pages.length || 1) - 1, page + 1)); }} style={{ position: "absolute", inset: "0 0 0 auto", width: "30%", height: "100%", zIndex: 5, background: "transparent" }} />
+            </>
+          )}
           {anim.active ? (
-            <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", perspective: "1200px", transformStyle: "preserve-3d" }}>
+            <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden", perspective: simpleAnim ? "none" : "1200px", transformStyle: "preserve-3d" }}>
               <div
                 style={{
                   position: "absolute",
@@ -505,21 +737,21 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
                   backfaceVisibility: "hidden",
                   WebkitBackfaceVisibility: "hidden",
                   transformOrigin: anim.dir === "next" ? "left center" : "right center",
-                  transition: "transform 750ms cubic-bezier(.22,.61,.36,1), opacity 750ms ease, box-shadow 750ms ease",
+                  transition: `transform ${ANIM_MS}ms cubic-bezier(.22,.61,.36,1), opacity ${ANIM_MS}ms ease, box-shadow ${ANIM_MS}ms ease`,
                   willChange: "transform, opacity",
-                  transform: anim.stage ? (anim.dir === "next" ? "translateX(-100.5%) scale(0.985) rotateY(-8deg) translateZ(0)" : "translateX(100.5%) scale(0.985) rotateY(8deg) translateZ(0)") : "translateX(0) scale(1) rotateY(0) translateZ(0)",
+                  transform: anim.stage ? (anim.dir === "next" ? (simpleAnim ? "translateX(-100.5%)" : "translateX(-100.5%) scale(0.985) rotateY(-8deg) translateZ(0)") : (simpleAnim ? "translateX(100.5%)" : "translateX(100.5%) scale(0.985) rotateY(8deg) translateZ(0)")) : (simpleAnim ? "translateX(0)" : "translateX(0) scale(1) rotateY(0) translateZ(0)"),
                   opacity: anim.stage ? 0.98 : 1,
-                  boxShadow: anim.stage ? "0 28px 56px rgba(0,0,0,0.40)" : "0 10px 28px rgba(0,0,0,0.28)",
+                  boxShadow: simpleAnim ? "none" : (anim.stage ? "0 28px 56px rgba(0,0,0,0.40)" : "0 10px 28px rgba(0,0,0,0.28)"),
                   zIndex: 2,
                   transformStyle: "preserve-3d",
                   outline: "1px solid transparent",
                   backgroundClip: "padding-box"
                 }}
               >
-                <div style={{ position: "absolute", inset: 0, padding: `${isFullscreen ? 0 : Math.max(16, vPad)}px 24px`, borderRadius: 0, backgroundColor: pageBg, boxShadow: isFullscreen ? "none" : undefined, filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined }}>
+                <div style={{ position: "absolute", inset: 0, padding: `${isFullscreen ? 0 : Math.max(16, vPad) + 4}px 24px`, borderRadius: 0, backgroundColor: pageBg, boxShadow: isFullscreen ? "none" : undefined, filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined }}>
                   <div className="max-w-none" style={{ fontFamily: famMap[fontFamily], color: fgColor, margin: 0 }} dangerouslySetInnerHTML={{ __html: (pages[lastPageRef.current] ? applyHighlights(pages[lastPageRef.current], lastPageRef.current) : html) }} />
                 </div>
-                <div style={{ position: "absolute", top: 0, bottom: 0, left: anim.dir === "next" ? "50%" : "auto", right: anim.dir === "next" ? "auto" : "50%", width: "16%", transform: "translateX(-50%)", pointerEvents: "none", background: anim.dir === "next" ? "linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))" : "linear-gradient(to left, rgba(0,0,0,0.45), rgba(0,0,0,0))", opacity: anim.stage ? 0.4 : 0, transition: "opacity 400ms ease" }} />
+                {!simpleAnim && <div style={{ position: "absolute", top: 0, bottom: 0, left: anim.dir === "next" ? "50%" : "auto", right: anim.dir === "next" ? "auto" : "50%", width: "16%", transform: "translateX(-50%)", pointerEvents: "none", background: anim.dir === "next" ? "linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))" : "linear-gradient(to left, rgba(0,0,0,0.45), rgba(0,0,0,0))", opacity: anim.stage ? 0.4 : 0, transition: "opacity 400ms ease" }} />}
               </div>
               <div
                 style={{
@@ -528,34 +760,51 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
                   backfaceVisibility: "hidden",
                   WebkitBackfaceVisibility: "hidden",
                   transformOrigin: anim.dir === "next" ? "right center" : "left center",
-                  transition: "transform 750ms cubic-bezier(.22,.61,.36,1), opacity 750ms ease, box-shadow 750ms ease",
+                  transition: `transform ${ANIM_MS}ms cubic-bezier(.22,.61,.36,1), opacity ${ANIM_MS}ms ease, box-shadow ${ANIM_MS}ms ease`,
                   willChange: "transform, opacity",
-                  transform: anim.stage ? "translateX(0) scale(1) rotateY(0) translateZ(0)" : (anim.dir === "next" ? "translateX(100.2%) scale(0.997) rotateY(0) translateZ(0)" : "translateX(-100.2%) scale(0.997) rotateY(0) translateZ(0)"),
+                  transform: anim.stage ? (simpleAnim ? "translateX(0)" : "translateX(0) scale(1) rotateY(0) translateZ(0)") : (anim.dir === "next" ? (simpleAnim ? "translateX(100.2%)" : "translateX(100.2%) scale(0.997) rotateY(0) translateZ(0)") : (simpleAnim ? "translateX(-100.2%)" : "translateX(-100.2%) scale(0.997) rotateY(0) translateZ(0)")),
                   opacity: anim.stage ? 1 : 0.98,
-                  boxShadow: anim.stage ? "0 28px 56px rgba(0,0,0,0.40)" : "0 10px 28px rgba(0,0,0,0.28)",
+                  boxShadow: simpleAnim ? "none" : (anim.stage ? "0 28px 56px rgba(0,0,0,0.40)" : "0 10px 28px rgba(0,0,0,0.28)"),
                   zIndex: 1,
                   transformStyle: "preserve-3d",
                   outline: "1px solid transparent",
                   backgroundClip: "padding-box"
                 }}
               >
-                <div style={{ position: "absolute", inset: 0, padding: `${isFullscreen ? 0 : Math.max(16, vPad)}px 24px`, borderRadius: 0, backgroundColor: pageBg, boxShadow: isFullscreen ? "none" : undefined, filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined }}>
+                <div style={{ position: "absolute", inset: 0, padding: `${isFullscreen ? 0 : Math.max(16, vPad) + 4}px 24px`, borderRadius: 0, backgroundColor: pageBg, boxShadow: isFullscreen ? "none" : undefined, filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined }}>
                   <div className="max-w-none" style={{ fontFamily: famMap[fontFamily], color: fgColor, margin: 0 }} dangerouslySetInnerHTML={{ __html: (pages[anim.next] ? applyHighlights(pages[anim.next], anim.next) : html) }} />
                 </div>
-                <div style={{ position: "absolute", top: 0, bottom: 0, left: anim.dir === "next" ? "auto" : "50%", right: anim.dir === "next" ? "50%" : "auto", width: "16%", transform: "translateX(50%)", pointerEvents: "none", background: anim.dir === "next" ? "linear-gradient(to left, rgba(0,0,0,0.45), rgba(0,0,0,0))" : "linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))", opacity: anim.stage ? 0.35 : 0, transition: "opacity 400ms ease" }} />
+                {!simpleAnim && <div style={{ position: "absolute", top: 0, bottom: 0, left: anim.dir === "next" ? "auto" : "50%", right: anim.dir === "next" ? "50%" : "auto", width: "16%", transform: "translateX(50%)", pointerEvents: "none", background: anim.dir === "next" ? "linear-gradient(to left, rgba(0,0,0,0.45), rgba(0,0,0,0))" : "linear-gradient(to right, rgba(0,0,0,0.45), rgba(0,0,0,0))", opacity: anim.stage ? 0.35 : 0, transition: "opacity 400ms ease" }} />}
               </div>
             </div>
           ) : (
             <div style={{ position: "relative" }}>
-              <div style={{ padding: isFullscreen ? "0 24px" : "16px 24px", borderRadius: 0, backgroundColor: pageBg, boxShadow: isFullscreen ? "none" : "0 8px 24px rgba(0,0,0,0.25)", filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined, height: "100%" }}>
+              <div style={{ padding: isFullscreen ? "0 24px" : `${Math.max(16, vPad) + 4}px 24px`, borderRadius: 0, backgroundColor: pageBg, boxShadow: (isFullscreen || simpleAnim) ? "none" : "0 8px 24px rgba(0,0,0,0.25)", filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined, height: "100%" }}>
                 <div className="max-w-none" style={{ fontFamily: famMap[fontFamily], color: fgColor, margin: 0 }} dangerouslySetInnerHTML={{ __html: (pages[page] ? applyHighlights(pages[page], page) : html) }} />
               </div>
             </div>
           )}
         </div>
       ) : (
-        <div onMouseUp={onSelect} className="w-full px-0 py-0" style={{ fontSize, lineHeight: effectiveLineHeight, width: "100%", height: dims.height, overflowY: "auto", overscrollBehavior: "contain", scrollBehavior: "smooth", fontFamily: famMap[fontFamily], padding: isFullscreen ? "0 24px" : "16px 24px", marginTop: isFullscreen ? toolbarH : 0 }}>
+        <div ref={scrollRef} onMouseUp={onSelect} onScroll={e => { try { const t = e.currentTarget; const prog = Math.max(0, Math.min(1, (t.scrollTop / Math.max(1, (t.scrollHeight - t.clientHeight))))); setScrollProgress(prog); saveScroll(prog); } catch {} }} className="w-full px-0 py-0" style={{ fontSize, lineHeight: effectiveLineHeight, width: "100%", height: dims.height, overflowY: "auto", overscrollBehavior: "contain", scrollBehavior: "smooth", fontFamily: famMap[fontFamily], padding: isFullscreen ? "0 24px" : "16px 24px", marginTop: isFullscreen ? toolbarH : 0, position: "relative" }}>
           <div className="prose max-w-none" style={{ filter: eyeComfort ? `sepia(${Math.round(warmth*100)}%) hue-rotate(330deg) brightness(${brightness})` : undefined, color: fgColor, fontFamily: famMap[fontFamily] }} dangerouslySetInnerHTML={{ __html: applyHighlights(html, -1) }} />
+          <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: `${Math.round(((scrollRef.current?.scrollTop || 0)))}px`, background: theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)", pointerEvents: "none" }} />
+        </div>
+      )}
+      {reflowing && mode === "page" && (
+        <div style={{ position: "fixed", inset: 0, background: "#000000", display: "grid", placeItems: "center", zIndex: 1000 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ position: "relative", width: 160, height: 120, margin: "0 auto", perspective: 800 }}>
+              <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: "#f4f0e6", border: "1px solid #222", transformOrigin: "left center", borderTopLeftRadius: 6, borderBottomLeftRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookLeft 1200ms ease-in-out infinite alternate" }} />
+              <div style={{ position: "absolute", top: 0, left: "50%", width: 76, height: 120, background: "#f4f0e6", border: "1px solid #222", transformOrigin: "right center", borderTopRightRadius: 6, borderBottomRightRadius: 6, boxShadow: "0 10px 24px rgba(0,0,0,0.35)", animation: "bookRight 1200ms ease-in-out infinite alternate" }} />
+              <div style={{ position: "absolute", top: 8, left: "calc(50% - 1px)", width: 2, height: 104, background: "#ddd" }} />
+            </div>
+            <div style={{ marginTop: 16, color: "#ffffff", fontWeight: 600 }}>Reordering pages…</div>
+            <style>{`
+              @keyframes bookLeft { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(-40deg) translateZ(0); } }
+              @keyframes bookRight { from { transform: rotateY(0deg) translateZ(0); } to { transform: rotateY(40deg) translateZ(0); } }
+            `}</style>
+          </div>
         </div>
       )}
       {settingsOpen && (
@@ -587,7 +836,7 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
               </div>
               <div className="flex items-center gap-3">
                 <span className={theme === "dark" ? "text-xs text-neutral-400" : "text-xs"}>Mode</span>
-                <select value={mode} onChange={e => setMode(e.target.value)} className={theme === "dark" ? "border border-neutral-700 rounded px-2 py-1 bg-neutral-800 text-neutral-200" : "border rounded px-2 py-1"}>
+                <select value={mode} onChange={e => { const v = e.target.value; setMode(v); persistSettings({ mode: v }); persistMode(v); }} className={theme === "dark" ? "border border-neutral-700 rounded px-2 py-1 bg-neutral-800 text-neutral-200" : "border rounded px-2 py-1"}>
                   <option value="page">Pages</option>
                   <option value="scroll">Scroll</option>
                 </select>
