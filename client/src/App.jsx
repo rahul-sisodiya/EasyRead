@@ -63,9 +63,9 @@ export default function App() {
       <main className="p-0 relative z-10">
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/upload" element={<RequireAuth><UploadPage /></RequireAuth>} />
-          <Route path="/reader" element={<RequireAuth><ReaderPage /></RequireAuth>} />
-          <Route path="/reader/:id" element={<RequireAuth><ReaderPage /></RequireAuth>} />
+          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/reader" element={<ReaderPage />} />
+          <Route path="/reader/:id" element={<ReaderPage />} />
           <Route path="/vocab" element={<RequireAuth><VocabPage /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
           <Route path="/signin" element={<SignInPage />} />

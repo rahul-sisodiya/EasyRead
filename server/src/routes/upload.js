@@ -19,11 +19,7 @@ router.post("/", async (req, res) => {
           res.status(200).json({ error: "upload_failed", detail: String(err?.message || err), bookId: null, html: "", text: "", fileUrl: "", coverUrl: "" });
           return;
         }
-        const uid = req.body?.userId || req.query?.userId;
-        if (!uid || uid === "guest") {
-          res.status(200).json({ error: "requires_account", bookId: null, html: "", text: "", fileUrl: "", coverUrl: "" });
-          return;
-        }
+        const uid = req.body?.userId || req.query?.userId || "guest";
         const pdfFile = (req.files && Array.isArray(req.files.pdf) ? req.files.pdf[0] : null) || req.file || null;
         let coverFile = null;
         const coverDataUrl = req.body?.coverDataUrl;

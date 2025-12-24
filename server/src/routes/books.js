@@ -6,9 +6,9 @@ const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
-    const userId = req.query.userId;
-    if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
-    const itemsRaw = await Book.find({ userId }, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).sort({ createdAt: -1 }).lean();
+    const uid = req.query.userId || "guest";
+    const q = (uid === "guest") ? { userId: { $in: ["guest", null] } } : { userId: uid };
+    const itemsRaw = await Book.find(q, { hasCover: 1, title: 1, category: 1, createdAt: 1, lastPage: 1, totalPages: 1, lastMode: 1, lastScroll: 1, pinned: 1, fileUrl: 1, coverUrl: 1 }).sort({ createdAt: -1 }).lean();
     const items = itemsRaw.map(it => ({ ...it, coverUrl: ((it.hasCover || it.coverUrl) ? (it.coverUrl || `/api/books/${it._id}/cover`) : "") }));
     res.json({ items });
   } catch (e) {
@@ -155,8 +155,7 @@ router.get("/:id/file", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   try {
-    const userId = req.body?.userId || req.query?.userId;
-    if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
+    const userId = req.body?.userId || req.query?.userId || "guest";
     const { title, category, lastPage, totalPages, coverUrl, pinned, coverDataUrl, lastScroll, lastMode } = req.body || {};
     const update = {};
     if (typeof title === "string") update.title = title;
@@ -196,8 +195,7 @@ router.patch("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const userId = req.query.userId;
-    if (!userId || userId === "guest") { res.status(401).json({ error: "requires_account" }); return; }
+    const userId = req.query.userId || "guest";
     const b = await Book.findOne({ _id: req.params.id, userId }).lean();
     if (!b) { res.status(404).json({ error: "not_found" }); return; }
     await Book.deleteOne({ _id: req.params.id, userId });

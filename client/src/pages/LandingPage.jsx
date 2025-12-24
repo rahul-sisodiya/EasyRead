@@ -9,9 +9,7 @@ export default function LandingPage() {
   const [pulse, setPulse] = useState(false);
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
-
-  const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
-
+  const API = import.meta.env.VITE_API_URL || (isLocal ? "http://localhost:5000/api" : "/api");
   const userObj = (() => { try { return JSON.parse(localStorage.getItem("easyread_user") || "null"); } catch { return null; } })();
   const userId = (userObj && userObj.userId) ? userObj.userId : "guest";
   const hasUser = !!(userObj && userObj.userId);
@@ -42,7 +40,6 @@ export default function LandingPage() {
   }, [hasUser, userId]);
   const onSubmit = async e => {
     e.preventDefault();
-    if (!hasUser) { navigate("/signin"); return; }
     if (!file) return;
     setLoading(true);
     setError("");
@@ -101,10 +98,7 @@ export default function LandingPage() {
           <p className="mt-3 text-neutral-300 text-lg">A fast, minimal reader with a retro vibe and powerful features.</p>
           <div className="mt-6 flex flex-wrap gap-3">
             <button onClick={() => {
-              try {
-                const u = JSON.parse(localStorage.getItem('easyread_user') || 'null');
-                if (u) navigate('/upload'); else navigate('/signin');
-              } catch { navigate('/signin'); }
+              navigate('/upload');
             }} className="px-5 py-2 rounded-md bg-white text-black font-semibold hover:translate-y-[-2px] transition">Get Started</button>
             <Link to="/signin" className="px-4 py-2 rounded-md border border-neutral-700 bg-neutral-900/70 text-white hover:bg-neutral-800 transition">Sign In</Link>
             <Link to="/register" className="px-4 py-2 rounded-md border border-neutral-700 bg-neutral-900/70 text-white hover:bg-neutral-800 transition">Register</Link>
