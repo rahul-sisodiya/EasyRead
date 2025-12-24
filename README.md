@@ -1,115 +1,137 @@
-# EasyRead (MERN, Vercel-ready)
+# EasyRead
 
-## Overview
+Retro-modern PDF reader with a clean library, paging and scroll modes, vocabulary, and automatic text extraction. Built with MERN and optimized for Vercel and Render deployments.
 
-- Upload PDF, extract text (OCR fallback), clean paragraphs, and paginate for a book-like reading experience.
-- Select any word to get meaning, translation, pronunciation, and save to vocabulary.
-- Reader features: font size, themes, bookmarks, reading progress.
+## Live Demo
 
-## Stack
+- Frontend: `https://easyreads.onrender.com/`
 
-- Frontend: React, Vite, Tailwind, React Router, Axios
-- Backend: Node.js, Express, Multer, pdf-parse, Mongoose, Cloudinary
-- Services: DictionaryAPI.dev, LibreTranslate
-- Deploy: Vercel (frontend and backend as separate projects)
-- DB: MongoDB Atlas
+## Features
 
-## Folder Structure
+- Upload PDFs with optional cover image; Cloudinary support for raw file storage.
+- Fast reader with two modes:
+  - Pages: book-style animation, exact viewport-fitting layout.
+  - Scroll: continuous reading with theme controls.
+- Reader customization: theme, palette, font size, line height, font, eye-comfort warmth/brightness.
+- Word tools: dictionary meanings, translations, vocabulary save.
+- Library: pin favorites, categories, cover thumbnails, last-page tracking.
+- Highlights: select → color highlight → persists per book and user.
+- Settings: per-user settings saved and reloaded automatically.
+- Auth: simple email login/register (hashed) to sync data across devices.
+
+## Tech Stack
+
+- Frontend: React (Vite), React Router, Tailwind CSS, Axios.
+- Backend: Node.js, Express, Helmet, CORS, Multer, Mongoose.
+- Parsing: `pdf-parse` with text cleaning; client uses `pdfjs-dist` for fallback extraction when needed.
+- External APIs: DictionaryAPI.dev, LibreTranslate.
+- Deploy: Vercel (serverless for backend, static for frontend) or Render (backend).
+- DB: MongoDB Atlas.
+
+## Monorepo Layout
 
 ```
-project/
+EasyRead/
 ├── server/
-│   ├── api/index.js           # Vercel serverless function entry
-│   ├── src/app.js             # Express app (exported)
-│   ├── src/dev.js             # Local dev server (listens)
-│   ├── src/routes/            # upload, meaning, translate, vocab
-│   ├── src/models/            # Book, Page, Vocab
-│   ├── src/services/pdf.js    # pdf parse + cleaning
+│   ├── api/index.js         # Serverless entry (Vercel)
+│   ├── src/app.js           # Express app
+│   ├── src/dev.js           # Local dev bootstrap
+│   ├── src/routes/          # API routes (auth, books, upload, settings, highlights, vocab, meaning, translate)
+│   ├── src/models/          # Mongoose models (Book, Page, Settings, User, Highlight, Vocab)
+│   ├── src/services/pdf.js  # PDF text extraction + cleaning
 │   └── vercel.json
 └── client/
-    ├── src/components/        # Reader, WordPopup
-    ├── src/pages/             # Upload, Reader, Settings, Vocab
-    ├── src/App.jsx, main.jsx
-    ├── tailwind.config.js
-    └── vite.config.js
+    ├── src/components/      # Reader, WordPopup, etc.
+    ├── src/pages/           # Upload, Reader, Settings, Vocab
+    ├── src/App.jsx          # Router and shell
+    └── vite config and Tailwind config
 ```
 
-## How It Works
+## Backend API
 
-- Upload: Client posts `multipart/form-data` to backend `/api/upload` using Multer. File is stored in temp, optionally uploaded to Cloudinary (raw resource).
-- Parse: Backend reads PDF using `pdf-parse`, returns raw text. If text is empty, you can later enable OCR via `tesseract.js` over rendered page images.
-- Clean: Text is normalized and wrapped in `<p>` elements for paragraph-preserving layout.
-- Paginate: Client measures rendered content and splits into pages based on available vertical space.
-- Word actions: Selection triggers backend proxies:
-  - Meaning: `GET /api/meaning/:word` → DictionaryAPI.dev
-  - Translation: `GET /api/translate?text=&to=` → LibreTranslate
-  - Save: `POST /api/vocab` persists word + metadata in MongoDB
-- Reader state: Font size, theme, current page, bookmarks saved in `localStorage`.
+- Auth
+  - `POST /api/auth/register` → `{ userId, name, email }`
+  - `POST /api/auth/login` → `{ userId, name, email }`
+- Books
+  - `GET /api/books?userId=` → list with `coverUrl`, `lastPage`, `pinned`
+  - `GET /api/books/:id?userId=` → book details
+  - `GET /api/books/:id/content?userId=` → `{ html, text }` (cached in `Page`)
+  - `GET /api/books/:id/cover` → cover image (if present)
+  - `GET /api/books/:id/file` → original PDF
+  - `PATCH /api/books/:id` → update `{ title, category, lastPage, coverUrl, pinned, totalPages }`
+  - `DELETE /api/books/:id?userId=` → delete book and pages
+- Upload
+  - `POST /api/upload` (multipart) fields: `pdf`, `cover` or `coverDataUrl` → `{ bookId, html, text, fileUrl, coverUrl, item }`
+- Settings
+  - `GET /api/settings?userId=` → per-user settings
+  - `PATCH /api/settings` → upsert selected fields `{ font, theme, lineHeight, fontFamily, palette, eyeComfort, warmth, brightness }`
+- Highlights
+  - `GET /api/highlights?userId=&bookId=` → list
+  - `POST /api/highlights` → create `{ text, color, nodeText, offset }`
+  - `POST /api/highlights/remove` → delete by match
+- Vocab
+  - `GET /api/vocab?userId=` → list
+  - `POST /api/vocab` → create `{ word, meaning, translation }`
+- Tools
+  - `GET /api/meaning/:word` → dictionary result
+  - `GET /api/translate?text=&to=&from=` → translation result
+
+## Environment Variables
+
+Backend (`server/.env`)
+- `MONGODB_URI` or `MONGO_URI` — MongoDB Atlas connection string
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — optional for file storage
+- `ALLOWED_ORIGINS` — comma-separated list for CORS (e.g. `https://easyreads.onrender.com/, http://localhost:5173`)
+- `LIBRE_BASE_URL` — optional override for LibreTranslate base
+- `PASSWORD_SALT` — optional salt for hashing
+
+Frontend (`client/.env`)
+- `VITE_API_URL` — API base, e.g. `http://localhost:5000/api` or `https://easyread-nxdy.onrender.com`
 
 ## Run Locally
 
-1) Backend
+Backend
+- `cd server && npm install`
+- Set `.env` as above
+- `npm run dev` → `http://localhost:5000`
 
-- `cd server`
-- `npm install`
-- Set `.env` (locally) with:
-  - `MONGODB_URI` (MongoDB Atlas connection string)
-  - Optional Cloudinary: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-- `npm run dev`
-- Server runs at `http://localhost:5000`
-
-2) Frontend
-
-- `cd client`
-- `npm install`
+Frontend
+- `cd client && npm install`
 - Create `.env` with `VITE_API_URL=http://localhost:5000/api`
-- `npm run dev`
-- App runs at `http://localhost:5173`
+- `npm run dev` → `http://localhost:5173`
 
-## Deploy on Vercel
+## Deployment
 
-You will create two Vercel projects from this monorepo.
+Render (Backend)
+- Create a Web Service pointing to `server/`.
+- Start command: `node src/dev.js` (or your preferred launcher).
+- Set environment variables as above.
+- Your API base will look like `https://<service>.onrender.com/api`.
 
-1) Backend (Project Root: `server`)
+Vercel
+- Backend (Project root: `server/`):
+  - Use serverless handler `server/api/index.js`.
+  - Set the environment variables.
+- Frontend (Project root: `client/`):
+  - Build with `npm run build`, output `dist`.
+  - Set `VITE_API_URL` to your backend `/api`.
 
-- Framework preset: Other
-- Build command: NONE (serverless functions)
-- Output directory: Leave empty
-- Environment variables:
-  - `MONGODB_URI`
-  - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (optional)
-- After deploy, note the backend URL, e.g. `https://easyread-server.vercel.app`
+## Reader UX Details
 
-2) Frontend (Project Root: `client`)
+- Pages mode measures rendered content to fill the viewport exactly and animates page turns. It accounts for toolbars in fullscreen and avoids clipped lines with conservative measurement.
+- Font changes reflow pages and keep your position by finding the closest matching text anchor or preserving relative progress.
+- Scroll mode offers the same theme controls with continuous reading.
 
-- Framework preset: Vite
-- Build command: `npm run build`
-- Output directory: `dist`
-- Environment variables:
-  - `VITE_API_URL=https://easyread-server.vercel.app/api`
+## Scripts
 
-## Key Files
+Frontend
+- `npm run dev` — start Vite dev server
+- `npm run build` — production build
+- `npm run preview` — preview locally
 
-- Backend app export: `server/src/app.js`
-- Vercel function entry: `server/api/index.js`
-- Upload route: `server/src/routes/upload.js`
-- PDF service: `server/src/services/pdf.js`
-- Meaning proxy: `server/src/routes/meaning.js`
-- Translate proxy: `server/src/routes/translate.js`
-- Vocabulary route: `server/src/routes/vocab.js`
-- Reader component: `client/src/components/Reader.jsx`
-- Word popup: `client/src/components/WordPopup.jsx`
-- Settings page: `client/src/pages/SettingsPage.jsx`
+Backend
+- `npm run dev` — start Express app locally
 
-## API Summary
+## License
 
-- `POST /api/upload` → returns `{ bookId, html, text }`
-- `GET /api/meaning/:word` → returns dictionary entries or 404
-- `GET /api/translate?text=<>&to=<lang>` → returns translation payload
-- `POST /api/vocab` → saves vocabulary item
-
-## Notes
-
-- Dictionary queries for unknown words return a standardized error (no definitions found). The client handles missing data gracefully.
-- Use POST for LibreTranslate; GET may be rejected with 405 if not supported.
-- For OCR: integrate `pdfjs-dist` to render page canvases and pass images into `tesseract.js` when `pdf-parse` yields empty text.
+MIT
