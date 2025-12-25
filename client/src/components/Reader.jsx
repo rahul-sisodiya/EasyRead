@@ -8,7 +8,7 @@ export default function Reader({ html, initialPage = null, bookId = null, onPage
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
   const RAW = import.meta.env.VITE_API_URL;
-  const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "/api");
+  const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api/api");
   const [fontSize, setFontSize] = useState(18);
   const [theme, setTheme] = useState("dark");
   const [lineHeight, setLineHeight] = useState(1.6);
