@@ -4,7 +4,7 @@ Retro-modern PDF reader with a clean library, paging and scroll modes, vocabular
 
 ## Live Demo
 
-- Frontend: `https://easyreads.onrender.com/`
+- Frontend: `https://easyread-1.onrender.com/`
 
 ## Features
 
