@@ -7,7 +7,7 @@ try { pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker
 const host = typeof window !== "undefined" ? window.location.hostname : "";
 const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 const RAW = import.meta.env.VITE_API_URL;
-const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "/api");
+const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "https://easyread-backend.onrender.com/api");
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);

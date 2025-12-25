@@ -14,7 +14,7 @@ export default function UserBadge() {
     const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 
     const RAW = import.meta.env.VITE_API_URL;
-    const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "https://easyread-nxdy.onrender.com/api");
+    const API = RAW ? ((RAW.startsWith("http") || RAW.startsWith("/")) ? RAW : `/${RAW}`) : (isLocal ? "http://localhost:5000/api" : "https://easyread-backend.onrender.com/api");
 
 
     let active = true;
