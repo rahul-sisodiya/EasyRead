@@ -79,9 +79,9 @@ export default function LandingPage() {
     const id = setInterval(() => setPulse(p => !p), 2200);
     return () => clearInterval(id);
   }, []);
-  const heroImg = "/images/download (2).jpeg";
-  const aboutImg = "/images/graduation-cap.jpeg";
-  const libraryImg = "/images/books.jpeg";
+  const heroImg = "/images/bookInhand.png";
+  const aboutImg = "/images/gradiatoncap.jpg";
+  const libraryImg = "/images/books.png";
   const bg = {
     background: "radial-gradient(1200px 600px at 20% 20%, rgba(168,85,247,0.08), transparent), radial-gradient(1000px 500px at 80% 40%, rgba(14,165,233,0.06), transparent), radial-gradient(600px 300px at 50% 90%, rgba(244,63,94,0.08), transparent)",
   };
