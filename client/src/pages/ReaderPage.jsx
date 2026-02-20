@@ -89,6 +89,7 @@ export default function ReaderPage() {
             setInitialScroll(Math.max(0, Math.min(100, ls)));
           }
           const lm = String(br.data?.item?.lastMode || "").toLowerCase();
+          lm = "scroll";
           if (lm === "page" || lm === "scroll") setInitialMode(lm);
         } catch {}
       })();
