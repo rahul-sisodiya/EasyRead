@@ -1,0 +1,10 @@
+@"
+target
+.git
+.gitignore
+.env
+.env.*
+*.log
+.idea
+.vscode
+"@ | Set-Content backend\.dockerignore
