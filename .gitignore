@@ -1,0 +1,172 @@
+# =========================================================
+# ENVIRONMENT VARIABLES / SECRETS
+# =========================================================
+
+.env
+.env.*
+!.env.example
+
+# Spring Boot local configuration containing secrets
+application-local.properties
+application-local.yml
+
+# Any local secret/config files
+secrets/
+*.secret
+*.key
+*.pem
+
+
+# =========================================================
+# SPRING BOOT / JAVA / MAVEN
+# =========================================================
+
+backend/target/
+**/target/
+
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+hs_err_pid*
+replay_pid*
+
+# Maven
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Maven Wrapper (if not using wrapper, these can be kept ignored)
+.mvn/wrapper/maven-wrapper.properties
+.mvnw
+.mvnw.cmd
+
+# Spring Boot logs
+logs/
+*.log
+
+
+# =========================================================
+# NODE / REACT / VITE
+# =========================================================
+
+frontend/node_modules/
+**/node_modules/
+
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+package-lock.json.backup
+
+# Editor directories and files (Node projects)
+*.local
+
+
+# =========================================================
+# IDE
+# =========================================================
+
+.idea/
+*.iml
+*.iws
+*.ipr
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+.classpath
+.project
+.settings/
+.factorypath
+
+# Eclipse / STS
+.apt_generated
+.springBeans
+.sts4-cache
+
+
+# =========================================================
+# OS FILES
+# =========================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+
+# =========================================================
+# TEMPORARY FILES
+# =========================================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+temp/
+tmp/
+.cache/
+
+
+# =========================================================
+# DATABASE / LOCAL DATA
+# =========================================================
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Local database dumps
+*.sql
+*.sql.gz
+
+
+# =========================================================
+# UPLOADED / GENERATED / ARCHIVED FILES
+# =========================================================
+
+uploads/
+backend/uploads/
+
+generated/
+backend/generated/
+
+# Old v1 project backup / extracted archives
+extracted/
+
+# Any PDF or ebook files that may be in the project root
+*.pdf
+*.epub
+*.mobi
+*.azw3
+
+# Personal interview notes
+INTERVIEW_PREP.md
