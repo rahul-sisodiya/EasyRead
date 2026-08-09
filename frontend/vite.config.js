@@ -8,8 +8,5 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:8080"
     }
-  },
-  define: {
-    "import.meta.env.VITE_API_URL": JSON.stringify("/api")
   }
 });
